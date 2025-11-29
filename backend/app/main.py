@@ -5,9 +5,8 @@ from datetime import datetime
 import json
 import asyncio
 
-app = FastAPI(title="Real-Time Feedback API")
+app = FastAPI(title="Real-Time Feedback API with Rooms")
 
-# CORS middleware - FIXED to allow WebSocket connections
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -21,25 +20,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Store active WebSocket connections
-class ConnectionManager:
-    def __init__(self):
+class RoomManager:
+    """Gère une room spécifique avec ses connexions et données"""
+    def __init__(self, room_code: str):
+        self.room_code = room_code
         self.active_connections: List[WebSocket] = []
         self.reactions_buffer: List[Dict] = []
         self.questions: List[Dict] = []
+        self.active_poll: Dict = None
+        self.created_at = datetime.now()
     
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
-        print(f"✅ Client connected. Total connections: {len(self.active_connections)}")
+        print(f"✅ Client connected to room {self.room_code}. Total in room: {len(self.active_connections)}")
     
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
-        print(f"❌ Client disconnected. Total connections: {len(self.active_connections)}")
+        print(f"❌ Client disconnected from room {self.room_code}. Remaining: {len(self.active_connections)}")
     
     async def broadcast(self, message: dict):
-        """Send message to all connected clients"""
+        """Envoie un message à tous les clients de cette room"""
         disconnected = []
         for connection in self.active_connections:
             try:
@@ -48,41 +50,77 @@ class ConnectionManager:
                 print(f"Error broadcasting to client: {e}")
                 disconnected.append(connection)
         
-        # Clean up disconnected clients
         for conn in disconnected:
             if conn in self.active_connections:
                 self.active_connections.remove(conn)
     
     def add_reaction(self, reaction_type: str, user_id: str = None):
-        """Store a reaction event"""
+        """Ajoute une réaction dans cette room"""
         reaction = {
             "type": reaction_type,
             "timestamp": datetime.now().isoformat(),
-            "user_id": user_id or "anonymous"
+            "user_id": user_id or "anonymous",
+            "room_code": self.room_code
         }
         self.reactions_buffer.append(reaction)
         
-        # Keep only last 100 reactions
         if len(self.reactions_buffer) > 100:
             self.reactions_buffer = self.reactions_buffer[-100:]
         
-        print(f"📊 Reaction added: {reaction_type} (Total: {len(self.reactions_buffer)})")
+        print(f"📊 Reaction in {self.room_code}: {reaction_type}")
         return reaction
     
     def add_question(self, question_text: str, user_id: str = None):
-        """Store a question"""
+        """Ajoute une question dans cette room"""
         question = {
-            "id": len(self.questions) + 1,
+            "id": f"q-{self.room_code}-{len(self.questions) + 1}-{datetime.now().timestamp()}",
             "text": question_text,
             "timestamp": datetime.now().isoformat(),
-            "user_id": user_id or "anonymous"
+            "user_id": user_id or "anonymous",
+            "upvotes": 0,
+            "upvoted_by": [],
+            "room_code": self.room_code
         }
         self.questions.append(question)
-        print(f"❓ Question added: {question_text[:50]}...")
+        print(f"❓ Question in {self.room_code}: {question_text[:50]}...")
         return question
     
+    def upvote_question(self, question_id: str, user_id: str):
+        """Vote pour une question dans cette room"""
+        for question in self.questions:
+            if question["id"] == question_id:
+                if user_id not in question.get("upvoted_by", []):
+                    question["upvotes"] = question.get("upvotes", 0) + 1
+                    if "upvoted_by" not in question:
+                        question["upvoted_by"] = []
+                    question["upvoted_by"].append(user_id)
+                    print(f"👍 Question upvoted in {self.room_code}: {question_id}")
+                    return question
+                else:
+                    print(f"⚠️ User already upvoted in {self.room_code}")
+                    return None
+        return None
+    
+    def create_poll(self, poll_text: str, duration: int = 30):
+        """Crée un poll standalone"""
+        poll_id = f"poll-{self.room_code}-{datetime.now().timestamp()}"
+        poll = {
+            "id": poll_id,
+            "text": poll_text,
+            "active": True,
+            "yes_votes": 0,
+            "no_votes": 0,
+            "voted_users": [],
+            "started_at": datetime.now().isoformat(),
+            "duration": duration,
+            "room_code": self.room_code
+        }
+        self.active_poll = poll
+        print(f"📊 Poll created in {self.room_code}: {poll_text}")
+        return poll
+    
     def get_recent_reactions(self, seconds: int = 30):
-        """Get reactions from the last N seconds"""
+        """Récupère les réactions récentes de cette room"""
         now = datetime.now()
         recent = []
         for reaction in self.reactions_buffer:
@@ -96,7 +134,7 @@ class ConnectionManager:
         return recent
     
     def get_reaction_counts(self, seconds: int = 30):
-        """Get counts of each reaction type"""
+        """Compte les réactions par type dans cette room"""
         recent = self.get_recent_reactions(seconds)
         counts = {
             "speed_up": 0,
@@ -110,148 +148,290 @@ class ConnectionManager:
                 counts[reaction_type] += 1
         return counts
 
-manager = ConnectionManager()
+class GlobalConnectionManager:
+    """Gère toutes les rooms de l'application"""
+    def __init__(self):
+        self.rooms: Dict[str, RoomManager] = {}
+    
+    def create_room(self, room_code: str) -> RoomManager:
+        """Crée une nouvelle room"""
+        if room_code not in self.rooms:
+            self.rooms[room_code] = RoomManager(room_code)
+            print(f"🎯 Room created: {room_code}")
+        return self.rooms[room_code]
+    
+    def get_room(self, room_code: str) -> RoomManager:
+        """Récupère une room existante ou la crée"""
+        if room_code not in self.rooms:
+            return self.create_room(room_code)
+        return self.rooms[room_code]
+    
+    def room_exists(self, room_code: str) -> bool:
+        """Vérifie si une room existe"""
+        return room_code in self.rooms
+    
+    def delete_room(self, room_code: str):
+        """Supprime une room vide"""
+        if room_code in self.rooms:
+            room = self.rooms[room_code]
+            if len(room.active_connections) == 0:
+                del self.rooms[room_code]
+                print(f"🗑️ Room deleted: {room_code}")
+    
+    def cleanup_empty_rooms(self):
+        """Nettoie les rooms vides"""
+        empty_rooms = [code for code, room in self.rooms.items() if len(room.active_connections) == 0]
+        for code in empty_rooms:
+            self.delete_room(code)
+
+# Instance globale du gestionnaire
+global_manager = GlobalConnectionManager()
 
 @app.get("/")
 async def root():
     return {
-        "message": "Real-Time Feedback API",
-        "version": "1.0",
+        "message": "Real-Time Feedback API with Rooms & Standalone Polls",
+        "version": "2.2",
         "status": "running",
-        "active_connections": len(manager.active_connections),
+        "total_rooms": len(global_manager.rooms),
         "endpoints": {
-            "websocket": "ws://localhost:8000/ws",
-            "stats": "/api/stats",
-            "questions": "/api/questions"
-        }
+            "websocket": "ws://localhost:8000/ws/{room_code}",
+            "stats": "/api/rooms/{room_code}/stats",
+            "rooms": "/api/rooms"
+        },
+        "features": [
+            "Multi-room support",
+            "Real-time reactions",
+            "Question upvoting",
+            "Standalone live polls with yes/no voting",
+            "Auto-closing polls (30s)"
+        ]
     }
 
 @app.get("/health")
 async def health_check():
+    total_connections = sum(len(room.active_connections) for room in global_manager.rooms.values())
     return {
         "status": "healthy",
-        "connections": len(manager.active_connections),
-        "total_reactions": len(manager.reactions_buffer),
-        "total_questions": len(manager.questions)
+        "total_rooms": len(global_manager.rooms),
+        "total_connections": total_connections,
+        "rooms": {
+            code: {
+                "connections": len(room.active_connections),
+                "reactions": len(room.reactions_buffer),
+                "questions": len(room.questions),
+                "has_active_poll": room.active_poll is not None and room.active_poll.get("active", False)
+            }
+            for code, room in global_manager.rooms.items()
+        }
     }
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
+@app.websocket("/ws/{room_code}")
+async def websocket_endpoint(websocket: WebSocket, room_code: str):
+    """WebSocket endpoint pour une room spécifique"""
+    room_code = room_code.upper()
+    room = global_manager.get_room(room_code)
+    
+    await room.connect(websocket)
     
     try:
-        # Send initial connection success message
+        # Message de connexion initial
         await websocket.send_json({
             "type": "connected",
-            "message": "Successfully connected to feedback system",
+            "message": f"Successfully connected to room {room_code}",
+            "room_code": room_code,
             "timestamp": datetime.now().isoformat()
         })
         
         while True:
-            # Receive data from client
             data = await websocket.receive_json()
-            
             message_type = data.get("type")
-            print(f"📨 Received: {message_type}")
+            print(f"📨 {room_code} received: {message_type}")
             
             if message_type == "reaction":
-                # Handle reaction
                 reaction_type = data.get("reaction")
                 user_id = data.get("user_id")
                 
                 if reaction_type in ["speed_up", "slow_down", "show_code", "im_lost"]:
-                    reaction = manager.add_reaction(reaction_type, user_id)
+                    reaction = room.add_reaction(reaction_type, user_id)
                     
-                    # Broadcast to all presenters
-                    await manager.broadcast({
+                    await room.broadcast({
                         "type": "reaction",
                         "data": reaction,
-                        "counts": manager.get_reaction_counts()
+                        "counts": room.get_reaction_counts()
                     })
-                else:
-                    print(f"⚠️ Invalid reaction type: {reaction_type}")
             
             elif message_type == "question":
-                # Handle question
                 question_text = data.get("text")
                 user_id = data.get("user_id")
                 
                 if question_text and question_text.strip():
-                    question = manager.add_question(question_text, user_id)
+                    question = room.add_question(question_text, user_id)
                     
-                    # Broadcast to all presenters
-                    await manager.broadcast({
+                    await room.broadcast({
                         "type": "question",
                         "data": question
                     })
             
+            elif message_type == "upvote_question":
+                question_id = data.get("question_id")
+                user_id = data.get("user_id")
+                
+                if question_id:
+                    updated_question = room.upvote_question(question_id, user_id)
+                    
+                    if updated_question:
+                        await room.broadcast({
+                            "type": "question_upvote",
+                            "data": updated_question
+                        })
+            
+            elif message_type == "create_poll":
+                poll_text = data.get("text", "Do you agree?")
+                duration = data.get("duration", 30)
+                
+                poll = room.create_poll(poll_text, duration)
+                
+                await room.broadcast({
+                    "type": "poll_created",
+                    "data": poll
+                })
+                
+                # Auto-close poll after duration
+                async def auto_close_poll():
+                    await asyncio.sleep(duration)
+                    if room.active_poll and room.active_poll.get("id") == poll["id"]:
+                        room.active_poll["active"] = False
+                        await room.broadcast({
+                            "type": "poll_closed",
+                            "data": room.active_poll
+                        })
+                
+                asyncio.create_task(auto_close_poll())
+            
+            elif message_type == "vote_poll":
+                poll_id = data.get("poll_id")
+                user_id = data.get("user_id")
+                vote = data.get("vote")  # "yes" or "no"
+                
+                if poll_id and vote in ["yes", "no"] and room.active_poll:
+                    if room.active_poll.get("id") == poll_id and room.active_poll.get("active"):
+                        if user_id not in room.active_poll.get("voted_users", []):
+                            # Update vote count
+                            if vote == "yes":
+                                room.active_poll["yes_votes"] = room.active_poll.get("yes_votes", 0) + 1
+                            else:
+                                room.active_poll["no_votes"] = room.active_poll.get("no_votes", 0) + 1
+                            
+                            room.active_poll["voted_users"].append(user_id)
+                            
+                            # Broadcast the updated poll to all clients
+                            await room.broadcast({
+                                "type": "poll_vote",
+                                "poll_id": poll_id,
+                                "vote": vote,
+                                "user_id": user_id,
+                                "data": room.active_poll
+                            })
+            
             elif message_type == "get_stats":
-                # Send current stats to this client
                 await websocket.send_json({
                     "type": "stats",
-                    "counts": manager.get_reaction_counts(),
-                    "total_questions": len(manager.questions),
-                    "recent_questions": manager.questions[-5:] if manager.questions else []
+                    "counts": room.get_reaction_counts(),
+                    "total_questions": len(room.questions),
+                    "recent_questions": room.questions[-10:] if room.questions else [],
+                    "recent_reactions": room.get_recent_reactions(60),
+                    "active_connections": len(room.active_connections),
+                    "active_poll": room.active_poll if room.active_poll and room.active_poll.get("active") else None,
+                    "room_code": room_code
                 })
             
             elif message_type == "ping":
-                # Respond to ping
                 await websocket.send_json({
                     "type": "pong",
+                    "room_code": room_code,
                     "timestamp": datetime.now().isoformat()
                 })
     
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        room.disconnect(websocket)
+        # Nettoyer la room si elle est vide
+        if len(room.active_connections) == 0:
+            global_manager.delete_room(room_code)
     except Exception as e:
-        print(f" WebSocket error: {e}")
-        manager.disconnect(websocket)
+        print(f"❌ WebSocket error in {room_code}: {e}")
+        room.disconnect(websocket)
 
-@app.get("/api/stats")
-async def get_stats():
-    """Get current statistics"""
+@app.get("/api/rooms")
+async def get_rooms():
+    """Liste toutes les rooms actives"""
     return {
-        "reaction_counts": manager.get_reaction_counts(),
-        "total_questions": len(manager.questions),
-        "recent_reactions": manager.get_recent_reactions(60),
-        "recent_questions": manager.questions[-10:] if manager.questions else [],
-        "active_connections": len(manager.active_connections)
+        "rooms": [
+            {
+                "code": code,
+                "connections": len(room.active_connections),
+                "reactions": len(room.reactions_buffer),
+                "questions": len(room.questions),
+                "has_active_poll": room.active_poll is not None and room.active_poll.get("active", False),
+                "created_at": room.created_at.isoformat()
+            }
+            for code, room in global_manager.rooms.items()
+        ],
+        "total": len(global_manager.rooms)
     }
 
-@app.get("/api/questions")
-async def get_questions():
-    """Get all questions"""
+@app.get("/api/rooms/{room_code}/stats")
+async def get_room_stats(room_code: str):
+    """Statistiques d'une room spécifique"""
+    room_code = room_code.upper()
+    
+    if not global_manager.room_exists(room_code):
+        return {"error": "Room not found"}, 404
+    
+    room = global_manager.get_room(room_code)
+    
     return {
-        "questions": manager.questions,
-        "total": len(manager.questions)
+        "room_code": room_code,
+        "reaction_counts": room.get_reaction_counts(),
+        "total_questions": len(room.questions),
+        "recent_reactions": room.get_recent_reactions(60),
+        "recent_questions": room.questions[-10:] if room.questions else [],
+        "active_connections": len(room.active_connections),
+        "active_poll": room.active_poll if room.active_poll and room.active_poll.get("active") else None,
+        "created_at": room.created_at.isoformat()
     }
 
-@app.post("/api/reactions/{reaction_type}")
-async def post_reaction(reaction_type: str):
-    """HTTP endpoint for posting reactions (fallback)"""
-    if reaction_type not in ["speed_up", "slow_down", "show_code", "im_lost"]:
-        return {"error": "Invalid reaction type"}, 400
-    
-    reaction = manager.add_reaction(reaction_type)
-    
-    # Broadcast to WebSocket clients
-    await manager.broadcast({
-        "type": "reaction",
-        "data": reaction,
-        "counts": manager.get_reaction_counts()
-    })
-    
-    return {"success": True, "reaction": reaction}
+@app.get("/api/rooms/{room_code}/exists")
+async def check_room_exists(room_code: str):
+    """Vérifie si une room existe"""
+    room_code = room_code.upper()
+    return {
+        "exists": global_manager.room_exists(room_code),
+        "room_code": room_code
+    }
 
 @app.on_event("startup")
 async def startup_event():
-    print("🚀 Real-Time Feedback API Started!")
-    print("📡 WebSocket endpoint: ws://localhost:8000/ws")
+    print("🚀 Real-Time Feedback API with Rooms & Standalone Polls Started!")
+    print("📡 WebSocket endpoint: ws://localhost:8000/ws/{room_code}")
     print("🌐 HTTP endpoint: http://localhost:8000")
+    print("🎯 Multi-room support enabled")
+    print("📊 Standalone polling feature enabled")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     print("👋 Shutting down Real-Time Feedback API")
+
+# Nettoyage périodique des rooms vides
+@app.on_event("startup")
+async def start_cleanup_task():
+    async def cleanup_task():
+        while True:
+            await asyncio.sleep(300)  # Toutes les 5 minutes
+            global_manager.cleanup_empty_rooms()
+            print(f"🧹 Cleanup done. Active rooms: {len(global_manager.rooms)}")
+    
+    asyncio.create_task(cleanup_task())
 
 if __name__ == "__main__":
     import uvicorn

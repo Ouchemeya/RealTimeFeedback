@@ -9,7 +9,7 @@ interface Question {
   user_id: string
 }
 
-export default function QuestionsPanel({ questions }: { questions: Question[] }) {
+export default function QuestionList({ questions }: { questions: Question[] }) {
   return (
     <div className="glass rounded-xl p-6 border border-cyan-500/20 hover:border-cyan-500/40 transition-all duration-300 h-full flex flex-col glow-pulse">
       <div className="flex items-center gap-3 mb-6">

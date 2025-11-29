@@ -1,36 +1,39 @@
 "use client"
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Code2, AlertCircle, RotateCw, Sparkles, MessageCircle, Volume2 } from 'lucide-react';
+import { Send, MessageCircle, Volume2, ArrowLeft, Sparkles } from 'lucide-react';
+import PollPopup from '@/app/components/PollPopup';
+import ReactionButtons from '@/app/components/ReactionButtons';
+import ConnectionStatus from '@/app/components/ConnectionStatus';
 
-const WS_URL = 'ws://localhost:8000/ws';
+const WS_BASE_URL = 'ws://localhost:8000/ws';
 
 const REACTIONS = [
   {
     id: "speed_up",
     label: "Speed Up",
-    icon: RotateCw,
+    icon: require('lucide-react').RotateCw,
     gradient: "from-blue-500 to-cyan-500",
     color: "rgba(6, 182, 212, 0.8)",
   },
   {
     id: "slow_down",
     label: "Slow Down",
-    icon: AlertCircle,
+    icon: require('lucide-react').AlertCircle,
     gradient: "from-purple-500 to-pink-500",
     color: "rgba(236, 72, 153, 0.8)",
   },
   {
     id: "show_code",
     label: "Show Code",
-    icon: Code2,
+    icon: require('lucide-react').Code2,
     gradient: "from-green-500 to-emerald-500",
     color: "rgba(34, 197, 94, 0.8)",
   },
   {
     id: "im_lost",
     label: "I'm Lost",
-    icon: AlertCircle,
+    icon: require('lucide-react').AlertCircle,
     gradient: "from-orange-500 to-red-500",
     color: "rgba(248, 113, 113, 0.8)",
   },
@@ -38,28 +41,46 @@ const REACTIONS = [
 
 export default function AudiencePage() {
   const [mounted, setMounted] = useState(false);
+  const [roomCode, setRoomCode] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
-  const [questions, setQuestions] = useState([]);
-  const [recentReaction, setRecentReaction] = useState(null);
-  const [flyingParticles, setFlyingParticles] = useState([]);
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [recentReaction, setRecentReaction] = useState<string | null>(null);
+  const [flyingParticles, setFlyingParticles] = useState<any[]>([]);
+  const [flyingEmojis, setFlyingEmojis] = useState<any[]>([]);
   const [reactionCounts, setReactionCounts] = useState({
     speed_up: 0,
     slow_down: 0,
     show_code: 0,
     im_lost: 0,
   });
-  const [connectionStatus, setConnectionStatus] = useState('connecting');
+  const [activePoll, setActivePoll] = useState<any>(null);
+  const [hasVoted, setHasVoted] = useState(false);
+  const [pollVote, setPollVote] = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'disconnected' | 'error'>('connecting');
   const [userId] = useState(`user_${Math.random().toString(36).substr(2, 9)}`);
+  const [userUpvotes, setUserUpvotes] = useState(new Set<string>());
   
-  const wsRef = useRef(null);
-  const containerRef = useRef(null);
-  const reconnectTimeoutRef = useRef(null);
-  const questionsEndRef = useRef(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const questionsEndRef = useRef<HTMLDivElement>(null);
 
-  // WebSocket connection management
   useEffect(() => {
     setMounted(true);
-    connectWebSocket();
+    const params = new URLSearchParams(window.location.search);
+    const room = params.get('room');
+    
+    if (room) {
+      setRoomCode(room.toUpperCase());
+    } else {
+      window.location.href = '/';
+    }
+  }, []);
+
+  useEffect(() => {
+    if (roomCode) {
+      connectWebSocket();
+    }
 
     return () => {
       if (wsRef.current) {
@@ -69,21 +90,21 @@ export default function AudiencePage() {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, []);
+  }, [roomCode]);
 
   useEffect(() => {
     questionsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [questions]);
 
   const connectWebSocket = () => {
+    if (!roomCode) return;
+
     try {
-      const ws = new WebSocket(WS_URL);
+      const ws = new WebSocket(`${WS_BASE_URL}/${roomCode}`);
       
       ws.onopen = () => {
-        console.log('✅ Connected to feedback system');
+        console.log(`✅ Connected to Room ${roomCode}`);
         setConnectionStatus('connected');
-        
-        // Request initial stats
         ws.send(JSON.stringify({ type: 'get_stats' }));
       };
 
@@ -94,23 +115,50 @@ export default function AudiencePage() {
           if (message.type === 'connected') {
             console.log('📡 Connection confirmed');
           } else if (message.type === 'stats') {
-            setReactionCounts(message.counts || {
-              speed_up: 0,
-              slow_down: 0,
-              show_code: 0,
-              im_lost: 0,
-            });
+            setReactionCounts(message.counts || reactionCounts);
+            setQuestions(message.recent_questions || []);
+            if (message.active_poll) {
+              setActivePoll(message.active_poll);
+            }
           } else if (message.type === 'reaction' && message.counts) {
             setReactionCounts(message.counts);
           } else if (message.type === 'question') {
-            // Add question to local display
             const newQuestion = {
-              id: `q-${Date.now()}`,
-              text: message.text,
-              timestamp: Date.now(),
+              id: message.data?.id || `q-${Date.now()}`,
+              text: message.data?.text || message.text,
+              timestamp: message.data?.timestamp || Date.now(),
+              upvotes: message.data?.upvotes || 0,
               verified: false,
             };
-            setQuestions(prev => [newQuestion, ...prev]);
+            setQuestions(prev => {
+              const exists = prev.find((q: any) => q.id === newQuestion.id);
+              if (exists) return prev;
+              return [newQuestion, ...prev];
+            });
+          } else if (message.type === 'question_upvote' && message.data) {
+            setQuestions(prev => prev.map((q: any) => 
+              q.id === message.data.id 
+                ? { ...q, upvotes: message.data.upvotes }
+                : q
+            ));
+          } else if (message.type === 'poll_created' && message.data) {
+            console.log('📊 Poll created:', message.data);
+            setActivePoll(message.data);
+            setHasVoted(false);
+            setPollVote(null);
+          } else if (message.type === 'poll_vote' && message.data) {
+            console.log('📊 Poll vote received:', message.data);
+            setActivePoll(message.data);
+          } else if (message.type === 'poll_closed' && message.data) {
+            console.log('📊 Poll closed:', message.data);
+            if (activePoll?.id === message.data.id) {
+              setActivePoll(message.data);
+              setTimeout(() => {
+                setActivePoll(null);
+                setHasVoted(false);
+                setPollVote(null);
+              }, 5000);
+            }
           }
         } catch (err) {
           console.error('Failed to parse message:', err);
@@ -118,7 +166,7 @@ export default function AudiencePage() {
       };
 
       ws.onerror = (error) => {
-        console.error('❌ :', error);
+        console.error('WebSocket error:', error);
         setConnectionStatus('error');
       };
 
@@ -126,7 +174,6 @@ export default function AudiencePage() {
         console.log('🔌 Disconnected from feedback system');
         setConnectionStatus('disconnected');
         
-        // Attempt to reconnect after 3 seconds
         reconnectTimeoutRef.current = setTimeout(() => {
           console.log('🔄 Attempting to reconnect...');
           setConnectionStatus('connecting');
@@ -141,7 +188,7 @@ export default function AudiencePage() {
     }
   };
 
-  const sendMessage = (message) => {
+  const sendMessage = (message: any) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(message));
       return true;
@@ -151,8 +198,7 @@ export default function AudiencePage() {
     }
   };
 
-  const handleReaction = (id, e) => {
-    // Send reaction to backend
+  const handleReaction = (id: string, e: React.MouseEvent<HTMLButtonElement>) => {
     const sent = sendMessage({
       type: 'reaction',
       reaction: id,
@@ -161,16 +207,12 @@ export default function AudiencePage() {
 
     if (!sent) return;
 
-    // Visual feedback
     setRecentReaction(id);
-    
-    // Update local count optimistically
     setReactionCounts(prev => ({
       ...prev,
-      [id]: prev[id] + 1,
+      [id]: prev[id as keyof typeof prev] + 1,
     }));
 
-    // Create flying particles
     if (containerRef.current) {
       const rect = e.currentTarget.getBoundingClientRect();
       const centerX = rect.left + rect.width / 2;
@@ -187,11 +229,25 @@ export default function AudiencePage() {
       
       setFlyingParticles(prev => [...prev, ...newParticles]);
 
+      const reaction = REACTIONS.find(r => r.id === id);
+      const emoji = {
+        id: `emoji-${Date.now()}`,
+        x: centerX,
+        y: centerY,
+        icon: reaction?.icon,
+        color: reaction?.gradient,
+      };
+      setFlyingEmojis(prev => [...prev, emoji]);
+
       setTimeout(() => {
         setFlyingParticles(prev => 
           prev.filter(p => !p.id.startsWith(`${id}-${Date.now()}`))
         );
       }, 1200);
+
+      setTimeout(() => {
+        setFlyingEmojis(prev => prev.filter(e => e.id !== emoji.id));
+      }, 2000);
     }
 
     setTimeout(() => setRecentReaction(null), 600);
@@ -211,38 +267,65 @@ export default function AudiencePage() {
     }
   };
 
-  const getStatusColor = () => {
-    switch (connectionStatus) {
-      case 'connected': return 'bg-green-400';
-      case 'connecting': return 'bg-yellow-400';
-      case 'disconnected': return 'bg-orange-400';
-      case 'error': return 'bg-red-400';
-      default: return 'bg-gray-400';
+  const handlePollVote = (vote: string) => {
+    if (!activePoll || hasVoted) return;
+    
+    const sent = sendMessage({
+      type: 'vote_poll',
+      poll_id: activePoll.id,
+      user_id: userId,
+      vote: vote,
+    });
+
+    if (sent) {
+      setHasVoted(true);
+      setPollVote(vote);
+      
+      setTimeout(() => {
+        setActivePoll(null);
+        setHasVoted(false);
+        setPollVote(null);
+      }, 3000);
     }
   };
 
-  const getStatusText = () => {
-    switch (connectionStatus) {
-      case 'connected': return 'Live • Connected';
-      case 'connecting': return 'Connecting...';
-      case 'disconnected': return 'Reconnecting...';
-      case 'error': return 'Connection Error';
-      default: return 'Unknown';
+  const handleUpvote = (questionId: string) => {
+    if (userUpvotes.has(questionId)) return;
+    
+    const sent = sendMessage({
+      type: 'upvote_question',
+      question_id: questionId,
+      user_id: userId,
+    });
+
+    if (sent) {
+      setUserUpvotes(prev => new Set([...prev, questionId]));
+      setQuestions(prev => prev.map((q: any) => 
+        q.id === questionId 
+          ? { ...q, upvotes: (q.upvotes || 0) + 1 }
+          : q
+      ));
     }
   };
+
+  const handleLeave = () => {
+    if (wsRef.current) {
+      wsRef.current.close();
+    }
+    window.location.href = '/';
+  };
+
+  if (!roomCode) return null;
 
   return (
     <div
       ref={containerRef}
       className="relative min-h-screen bg-gradient-to-br from-slate-950 via-blue-950/10 to-slate-950 flex flex-col px-4 overflow-hidden"
     >
-      {/* Ambient background effects */}
+      {/* Background gradients */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-cyan-500/15 rounded-full blur-3xl animate-morph" />
-        <div
-          className="absolute bottom-1/4 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-morph"
-          style={{ animationDelay: "3s" }}
-        />
+        <div className="absolute bottom-1/4 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-morph" style={{ animationDelay: "3s" }} />
         <div className="absolute top-1/2 right-1/3 w-80 h-80 bg-indigo-500/12 rounded-full blur-3xl animate-ambient-float" />
       </div>
 
@@ -253,7 +336,7 @@ export default function AudiencePage() {
         return (
           <div
             key={particle.id}
-            className="fixed w-3 h-3 rounded-full pointer-events-none"
+            className="fixed w-3 h-3 rounded-full pointer-events-none z-50"
             style={{
               left: `${particle.x}px`,
               top: `${particle.y}px`,
@@ -261,19 +344,46 @@ export default function AudiencePage() {
               animation: 'particle-float 1.2s ease-out forwards',
               '--tx': `${tx}px`,
               '--ty': `${ty}px`,
-            }}
+            } as React.CSSProperties}
           />
         );
       })}
 
+      {/* Flying emojis */}
+      {flyingEmojis.map((emoji) => {
+        const EmojiIcon = emoji.icon;
+        return (
+          <div
+            key={emoji.id}
+            className="fixed pointer-events-none z-50"
+            style={{
+              left: `${emoji.x}px`,
+              top: `${emoji.y}px`,
+              animation: 'emoji-to-presenter 2s ease-out forwards',
+            }}
+          >
+            <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${emoji.color} flex items-center justify-center shadow-lg`}>
+              {EmojiIcon && <EmojiIcon className="w-6 h-6 text-white" />}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Main content */}
       <div className="relative z-10 w-full max-w-6xl mx-auto py-6 flex flex-col h-screen">
         {/* Header */}
         <div className={`mb-8 text-center ${mounted ? 'animate-float-in-down' : 'opacity-0'}`}>
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 border border-cyan-500/30 rounded-full mb-6 backdrop-blur-sm hover:border-cyan-500/60 transition-colors duration-300">
-            <div className={`w-2 h-2 rounded-full ${getStatusColor()} relative ${connectionStatus === 'connected' ? 'pulse-ring' : ''}`} />
-            <span className="text-xs font-medium text-white/70">{getStatusText()}</span>
-          </div>
-          <h1 className="text-5xl font-bold text-white mb-3 text-balance">
+          <button
+            onClick={handleLeave}
+            className="mb-4 flex items-center gap-2 text-white/60 hover:text-white transition-colors mx-auto"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span className="text-sm">Leave Room</span>
+          </button>
+
+          <ConnectionStatus status={connectionStatus} roomCode={roomCode} />
+
+          <h1 className="text-5xl font-bold text-white mb-3 mt-4 text-balance">
             <span className="bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent animate-gradient-shift">
               Share Your <span className="text-accent-yellow-glow">Feedback</span>
             </span>
@@ -283,59 +393,26 @@ export default function AudiencePage() {
           </p>
         </div>
 
-        {/* Main content grid */}
+        {/* Main grid */}
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-0">
-          {/* Reactions card - takes 2 columns */}
-          <div
-            className={`lg:col-span-2 glass rounded-2xl p-8 border border-cyan-500/20 flex flex-col ${mounted ? 'animate-float-in-up' : 'opacity-0'}`}
-          >
+          {/* Reactions section */}
+          <div className={`lg:col-span-2 glass rounded-2xl p-8 border border-cyan-500/20 flex flex-col ${mounted ? 'animate-float-in-up' : 'opacity-0'}`}>
             <h2 className="text-sm font-bold text-white/60 uppercase tracking-wider mb-6 flex items-center gap-2">
               <Sparkles className="w-4 h-4" />
               Quick Reaction
             </h2>
-            <div className="grid grid-cols-2 gap-4">
-              {REACTIONS.map((reaction, idx) => {
-                const Icon = reaction.icon;
-                const isActive = recentReaction === reaction.id;
-                const count = reactionCounts[reaction.id];
-                return (
-                  <button
-                    key={reaction.id}
-                    onClick={(e) => handleReaction(reaction.id, e)}
-                    disabled={connectionStatus !== 'connected'}
-                    className={`relative group overflow-hidden rounded-xl p-6 transition-all duration-300 btn-premium ${
-                      isActive
-                        ? `bg-gradient-to-br ${reaction.gradient} text-white shadow-lg shadow-cyan-500/40 scale-105`
-                        : "bg-white/5 border border-cyan-500/20 text-white hover:border-cyan-500/50 hover:bg-white/10 hover:shadow-lg hover:shadow-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                    }`}
-                    style={{
-                      animationName: mounted ? 'float-in-up' : 'none',
-                      animationDuration: '0.6s',
-                      animationTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
-                      animationDelay: `${0.1 * idx}s`,
-                      animationFillMode: 'both',
-                    }}
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                    <div className="relative text-center">
-                      <Icon
-                        className={`w-8 h-8 mx-auto mb-2 transition-transform ${isActive ? 'scale-125 animate-rotate-in' : 'group-hover:scale-110'}`}
-                      />
-                      <p className="font-semibold text-sm">{reaction.label}</p>
-                      {count > 0 && (
-                        <div className="text-xs text-white/70 mt-1 font-medium animate-scale-in">{count}</div>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            <ReactionButtons
+              reactions={REACTIONS}
+              reactionCounts={reactionCounts}
+              recentReaction={recentReaction}
+              onReaction={handleReaction}
+              isConnected={connectionStatus === 'connected'}
+              mounted={mounted}
+            />
           </div>
 
-          {/* Questions panel - takes 1 column on the right */}
-          <div
-            className={`glass rounded-2xl p-6 border border-cyan-500/20 flex flex-col overflow-hidden ${mounted ? 'animate-float-in-right' : 'opacity-0'}`}
-          >
+          {/* Questions section */}
+          <div className={`glass rounded-2xl p-6 border border-cyan-500/20 flex flex-col overflow-hidden ${mounted ? 'animate-float-in-right' : 'opacity-0'}`}>
             <h2 className="text-sm font-bold text-white/60 uppercase tracking-wider mb-4 flex items-center gap-2">
               <Volume2 className="w-4 h-4" />
               Questions <span className="text-accent-yellow">Live</span> ({questions.length})
@@ -350,31 +427,66 @@ export default function AudiencePage() {
                   </div>
                 </div>
               ) : (
-                questions.map((q, idx) => (
-                  <div
-                    key={q.id}
-                    className="glass rounded-lg p-3 border border-cyan-500/10 hover:border-cyan-500/30 transition-all duration-300 group cursor-pointer"
-                    style={{
-                      animationName: "slide-in-up",
-                      animationDuration: "0.5s",
-                      animationTimingFunction: "ease-out",
-                      animationDelay: `${idx * 0.05}s`,
-                      animationFillMode: "both",
-                    }}
-                  >
-                    <p className="text-sm text-white/80 line-clamp-2 group-hover:text-white transition-colors">
-                      {q.text}
-                    </p>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="text-xs text-white/40">just now</span>
-                    </div>
-                  </div>
-                ))
+                [...questions]
+                  .sort((a, b) => (b.upvotes || 0) - (a.upvotes || 0))
+                  .map((q, idx) => {
+                    const hasUpvoted = userUpvotes.has(q.id);
+                    const upvoteCount = q.upvotes || 0;
+                    return (
+                      <div
+                        key={q.id}
+                        className="glass rounded-lg p-3 border border-cyan-500/10 hover:border-cyan-500/30 transition-all duration-300 group"
+                        style={{
+                          animationName: "slide-in-up",
+                          animationDuration: "0.5s",
+                          animationTimingFunction: "ease-out",
+                          animationDelay: `${idx * 0.05}s`,
+                          animationFillMode: "both",
+                        }}
+                      >
+                        <p className="text-sm text-white/80 line-clamp-2 group-hover:text-white transition-colors mb-2">
+                          {q.text}
+                        </p>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-white/40">
+                            {new Date(q.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                          <button
+                            onClick={() => handleUpvote(q.id)}
+                            disabled={hasUpvoted || connectionStatus !== 'connected'}
+                            className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium transition-all duration-300 ${
+                              hasUpvoted
+                                ? 'bg-cyan-500/20 text-cyan-400 cursor-not-allowed'
+                                : 'bg-white/5 text-white/60 hover:bg-cyan-500/20 hover:text-cyan-400 hover:scale-105 active:scale-95'
+                            }`}
+                          >
+                            <svg 
+                              className={`w-3.5 h-3.5 transition-transform ${hasUpvoted ? 'scale-110' : ''}`}
+                              fill={hasUpvoted ? 'currentColor' : 'none'}
+                              stroke="currentColor" 
+                              viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                            </svg>
+                            <span className={hasUpvoted ? 'font-bold' : ''}>{upvoteCount}</span>
+                          </button>
+                        </div>
+                        
+                        {upvoteCount >= 5 && (
+                          <div className="mt-2 pt-2 border-t border-cyan-500/10">
+                            <span className="text-xs text-yellow-400 flex items-center gap-1">
+                              🔥 Hot question
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
               )}
               <div ref={questionsEndRef} />
             </div>
 
-            {/* Question input at the bottom of the questions panel */}
+            {/* Ask question input */}
             <div className="mt-auto pt-4 border-t border-cyan-500/10">
               <h3 className="text-xs font-bold text-white/60 uppercase tracking-wider mb-3 flex items-center gap-2">
                 <MessageCircle className="w-3 h-3" />
@@ -402,11 +514,8 @@ export default function AudiencePage() {
           </div>
         </div>
 
-        {/* Footer stats */}
-        <div
-          className={`mt-8 text-center text-sm text-white/40 ${mounted ? 'animate-float-in-up' : 'opacity-0'}`}
-          style={{ animationDelay: '0.3s' }}
-        >
+        {/* Total reactions */}
+        <div className={`mt-8 text-center text-sm text-white/40 ${mounted ? 'animate-float-in-up' : 'opacity-0'}`} style={{ animationDelay: '0.3s' }}>
           <p>
             Total reactions:{" "}
             <span className="text-accent-yellow font-bold">
@@ -416,134 +525,13 @@ export default function AudiencePage() {
         </div>
       </div>
 
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(0, 217, 255, 0.05);
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(0, 217, 255, 0.2);
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(0, 217, 255, 0.4);
-        }
-        .text-accent-yellow-glow {
-          color: rgba(255, 215, 0, 0.8);
-        }
-        .text-accent-yellow {
-          color: rgba(255, 215, 0, 0.8);
-        }
-        .animate-yellow-pulse {
-          animation: yellow-pulse 1.5s infinite;
-        }
-        @keyframes yellow-pulse {
-          0%, 100% {
-            opacity: 1;
-          }
-          50% {
-            opacity: 0.5;
-          }
-        }
-        @keyframes morph {
-          0%, 100% { transform: translate(0, 0) scale(1); }
-          33% { transform: translate(30px, -50px) scale(1.1); }
-          66% { transform: translate(-20px, 20px) scale(0.9); }
-        }
-        @keyframes float-in-down {
-          from { opacity: 0; transform: translateY(-30px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes float-in-up {
-          from { opacity: 0; transform: translateY(30px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes float-in-right {
-          from { opacity: 0; transform: translateX(30px); }
-          to { opacity: 1; transform: translateX(0); }
-        }
-        @keyframes slide-in-up {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes particle-float {
-          to {
-            transform: translate(var(--tx), var(--ty));
-            opacity: 0;
-            scale: 0.5;
-          }
-        }
-        @keyframes gradient-shift {
-          0%, 100% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-        }
-        @keyframes ambient-float {
-          0%, 100% { transform: translate(0, 0); }
-          50% { transform: translate(20px, 20px); }
-        }
-        @keyframes rotate-in {
-          from { transform: rotate(-180deg) scale(0); }
-          to { transform: rotate(0) scale(1.25); }
-        }
-        @keyframes scale-in {
-          from { transform: scale(0); }
-          to { transform: scale(1); }
-        }
-        .animate-morph {
-          animation: morph 8s ease-in-out infinite;
-        }
-        .animate-gradient-shift {
-          background-size: 200% auto;
-          animation: gradient-shift 3s ease infinite;
-        }
-        .animate-ambient-float {
-          animation: ambient-float 6s ease-in-out infinite;
-        }
-        .animate-rotate-in {
-          animation: rotate-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-        .animate-scale-in {
-          animation: scale-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-        .pulse-ring::after {
-          content: '';
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          width: 100%;
-          height: 100%;
-          border-radius: 50%;
-          background: currentColor;
-          animation: pulse-ring 1.5s ease-out infinite;
-        }
-        @keyframes pulse-ring {
-          0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-          100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
-        }
-        .glass {
-          background: rgba(15, 23, 42, 0.4);
-          backdrop-filter: blur(12px);
-        }
-        .btn-premium {
-          position: relative;
-        }
-        .btn-premium::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          border-radius: inherit;
-          padding: 1px;
-          background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent);
-          -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-          -webkit-mask-composite: xor;
-          mask-composite: exclude;
-          pointer-events: none;
-        }
-      `}</style>
+      {/* Poll Popup */}
+      <PollPopup
+        activePoll={activePoll}
+        hasVoted={hasVoted}
+        pollVote={pollVote}
+        onVote={handlePollVote}
+      />
     </div>
   );
 }

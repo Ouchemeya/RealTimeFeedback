@@ -1,12 +1,13 @@
 "use client"
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AlertTriangle, TrendingUp, Zap, RotateCw, Code2, AlertCircle, ArrowLeft } from 'lucide-react';
+import { AlertTriangle, TrendingUp, Zap, RotateCw, Code2, AlertCircle, ArrowLeft, Brain, MessageSquare } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import ParticipantAvatars from '@/app/components/ParticipantAvatars';
 import EngagementScore from '@/app/components/EngagementScore';
 import PollControl from '@/app/components/PollControl';
 import QuestionList from '@/app/components/QuestionList';
+import AIInsightsPanel from '@/app/components/AIInsightsPanel';
 
 const WS_BASE_URL = 'ws://localhost:8000/ws';
 
@@ -63,8 +64,10 @@ export default function PresenterDashboard() {
   const [reactionWaves, setReactionWaves] = useState<any[]>([]);
   const [participants, setParticipants] = useState<any[]>([]);
   const [flyingEmojis, setFlyingEmojis] = useState<any[]>([]);
+  const [flyingQuestions, setFlyingQuestions] = useState<any[]>([]);
   const [activePoll, setActivePoll] = useState<any>(null);
   const [pollText, setPollText] = useState("");
+  const [aiInsights, setAiInsights] = useState<any>(null);
   
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -110,9 +113,15 @@ export default function PresenterDashboard() {
           
           if (message.type === 'connected') {
             console.log('📡 Connection confirmed');
+          } else if (message.type === 'ai_insights') {
+            console.log('🤖 AI Insights received:', message.data);
+            setAiInsights(message.data);
           } else if (message.type === 'reaction') {
             if (message.counts) {
               handleReactionUpdate(message.counts);
+            }
+            if (message.heatmap_data) {
+              setHeatmapData(message.heatmap_data);
             }
             if (message.data) {
               setRecentReactions(prev => [message.data, ...prev].slice(0, 50));
@@ -126,6 +135,10 @@ export default function PresenterDashboard() {
               setQuestions(prev => {
                 const exists = prev.find((q: any) => q.id === message.data.id);
                 if (exists) return prev;
+                
+                // Create flying notification for new question
+                createFlyingQuestion(message.data.text);
+                
                 return [message.data, ...prev];
               });
               if (message.data.user_id) {
@@ -153,6 +166,9 @@ export default function PresenterDashboard() {
             if (message.counts) {
               handleReactionUpdate(message.counts);
             }
+            if (message.heatmap_data) {
+              setHeatmapData(message.heatmap_data);
+            }
             setActiveConnections(message.active_connections || 0);
             if (message.recent_questions) {
               setQuestions(message.recent_questions.reverse());
@@ -165,6 +181,9 @@ export default function PresenterDashboard() {
             }
             if (message.active_poll) {
               setActivePoll(message.active_poll);
+            }
+            if (message.ai_insights) {
+              setAiInsights(message.ai_insights);
             }
           }
         } catch (err) {
@@ -318,6 +337,21 @@ export default function PresenterDashboard() {
     }, 2000);
   };
 
+  const createFlyingQuestion = (questionText: string) => {
+    const question = {
+      id: `question-${Date.now()}-${Math.random()}`,
+      text: questionText,
+      startX: Math.random() * (window.innerWidth - 400), // Keep within bounds
+      startY: window.innerHeight,
+    };
+    
+    setFlyingQuestions(prev => [...prev, question]);
+    
+    setTimeout(() => {
+      setFlyingQuestions(prev => prev.filter(q => q.id !== question.id));
+    }, 3000);
+  };
+  
   const addParticipant = (userId: string) => {
     const initials = userId.slice(-2).toUpperCase();
     const colors = [
@@ -382,29 +416,15 @@ export default function PresenterDashboard() {
     return Math.round(score);
   };
 
+ const [heatmapData, setHeatmapData] = useState(Array.from({ length: 12 }, (_, i) => ({
+    time: i === 11 ? 'Now' : `-${(11-i)*5}m`,
+    reactions: 0,
+  })));
+
   const getHeatmapData = () => {
-    const now = Date.now();
-    const intervals = 12;
-    const intervalSize = 5 * 60 * 1000;
-    
-    const data = Array.from({ length: intervals }, (_, i) => {
-      const startTime = now - (intervals - i) * intervalSize;
-      const endTime = startTime + intervalSize;
-      
-      const count = recentReactions.filter(r => {
-        const timestamp = new Date(r.timestamp).getTime();
-        return timestamp >= startTime && timestamp < endTime;
-      }).length;
-      
-      const minutes = (intervals - i) * 5;
-      return {
-        time: `-${minutes}m`,
-        reactions: count,
-      };
-    });
-    
-    return data;
-  };
+  // Return the heatmap data from state, or fallback to default
+  return heatmapData;
+};
 
   const getStatusColor = () => {
     switch (connectionStatus) {
@@ -458,7 +478,7 @@ export default function PresenterDashboard() {
         </div>
       ))}
 
-      {/* Flying emojis */}
+{/* Flying emojis */}
       {flyingEmojis.map((emoji) => {
         const EmojiIcon = emoji.icon;
         return (
@@ -477,6 +497,32 @@ export default function PresenterDashboard() {
           </div>
         );
       })}
+
+      {/* Flying questions */}
+      {flyingQuestions.map((question) => (
+        <div
+          key={question.id}
+          className="fixed pointer-events-none z-40"
+          style={{
+            left: `${question.startX}px`,
+            top: `${question.startY}px`,
+            animation: 'question-float-up 3s ease-out forwards',
+            maxWidth: '400px',
+          }}
+        >
+          <div className="glass rounded-xl p-4 border border-cyan-500/40 bg-cyan-500/20 backdrop-blur-xl shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-gradient-to-br from-cyan-500/30 to-blue-500/30 rounded-lg flex-shrink-0">
+                <MessageSquare className="w-5 h-5 text-cyan-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-cyan-400 mb-1">New Question</p>
+                <p className="text-sm text-white/90 line-clamp-3">{question.text}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
 
       {/* Alerts */}
       {alerts.length > 0 && (
@@ -519,12 +565,12 @@ export default function PresenterDashboard() {
                 <span className="text-sm">Leave Room</span>
               </button>
               
-              <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center gap-3 mb-2 flex-wrap">
                 <div className={`w-3 h-3 rounded-full ${getStatusColor()} ${connectionStatus === 'connected' ? 'pulse-ring' : ''} relative`} />
                 <span className="text-sm font-medium text-green-400/80">
                   {connectionStatus === 'connected' ? 'LIVE' : connectionStatus.toUpperCase()}
                 </span>
-                <div className="flex items-center gap-2 ml-4 px-3 py-1 bg-white/5 rounded-full border border-cyan-500/30">
+                <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full border border-cyan-500/30">
                   <span className="text-sm text-white/70">Room:</span>
                   <span className="font-mono font-bold text-cyan-400">{roomCode}</span>
                   <button
@@ -542,6 +588,10 @@ export default function PresenterDashboard() {
                       </svg>
                     )}
                   </button>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1 bg-purple-500/10 rounded-full border border-purple-500/30">
+                  <Brain className="w-3 h-3 text-purple-400" />
+                  <span className="text-xs text-purple-400 font-medium">AI Active</span>
                 </div>
               </div>
               <h1 className="text-3xl font-bold text-white">
@@ -596,20 +646,31 @@ export default function PresenterDashboard() {
           </div>
         </div>
 
-        {/* Chart and questions/poll */}
+        {/* Grid layout */}
         <div className="grid lg:grid-cols-3 gap-6">
-          {/* Emotion Wave Timeline */}
+          {/* Left column: Chart and Poll */}
           <div
-            className={`lg:col-span-2 ${mounted ? 'animate-float-in-left' : 'opacity-0'}`}
+            className={`lg:col-span-2 space-y-6 ${mounted ? 'animate-float-in-left' : 'opacity-0'}`}
             style={{ animationDelay: "0.1s" }}
           >
+            {/* Compact Poll Control */}
+            <PollControl
+              activePoll={activePoll}
+              pollText={pollText}
+              setPollText={setPollText}
+              onCreatePoll={handleCreatePoll}
+              onEndPoll={handleEndPoll}
+              isConnected={connectionStatus === 'connected'}
+            />
+            
+            {/* Chart */}
             <div className="glass rounded-xl p-6 border border-cyan-500/20 hover:border-cyan-500/40 transition-all duration-300 glow-pulse">
               <div className="mb-6">
                 <h2 className="text-xl font-bold text-white mb-1">Emotion Wave Timeline</h2>
                 <p className="text-sm text-white/50">Live audience sentiment over time</p>
               </div>
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={getHeatmapData()}>
+                <BarChart data={heatmapData}>
                   <defs>
                     <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#06b6d4" stopOpacity={0.8} />
@@ -633,23 +694,15 @@ export default function PresenterDashboard() {
             </div>
           </div>
 
-          {/* Right column: Questions + Poll */}
+          {/* Right column: Questions */}
           <div className={`${mounted ? 'animate-float-in-right' : 'opacity-0'}`} style={{ animationDelay: "0.2s" }}>
-            <div className="space-y-6">
-              {/* Questions Panel */}
-              <QuestionList questions={questions} />
-              
-              {/* Poll Control */}
-              <PollControl
-                activePoll={activePoll}
-                pollText={pollText}
-                setPollText={setPollText}
-                onCreatePoll={handleCreatePoll}
-                onEndPoll={handleEndPoll}
-                isConnected={connectionStatus === 'connected'}
-              />
-            </div>
+            <QuestionList questions={questions} />
           </div>
+        </div>
+
+        {/* AI Insights Section */}
+        <div className={`mt-8 ${mounted ? 'animate-float-in-up' : 'opacity-0'}`} style={{ animationDelay: "0.3s" }}>
+          <AIInsightsPanel insights={aiInsights} />
         </div>
       </main>
     </div>

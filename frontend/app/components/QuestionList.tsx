@@ -11,7 +11,7 @@ interface Question {
 
 export default function QuestionList({ questions }: { questions: Question[] }) {
   return (
-    <div className="glass rounded-xl p-6 border border-cyan-500/20 hover:border-cyan-500/40 transition-all duration-300 h-full flex flex-col glow-pulse">
+    <div className="glass rounded-xl p-6 border border-cyan-500/20 hover:border-cyan-500/40 transition-all duration-300 flex flex-col glow-pulse" style={{ height: '600px' }}>
       <div className="flex items-center gap-3 mb-6">
         <div className="p-2 bg-gradient-to-br from-cyan-500/20 to-blue-500/20 rounded-lg">
           <MessageSquare className="w-5 h-5 text-cyan-400" />
@@ -20,7 +20,7 @@ export default function QuestionList({ questions }: { questions: Question[] }) {
         <span className="ml-auto text-sm font-semibold text-white/40">{questions.length}</span>
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+      <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar" style={{ maxHeight: '500px' }}>
         {questions.length === 0 ? (
           <p className="text-white/50 text-sm py-8 text-center">Waiting for questions...</p>
         ) : (

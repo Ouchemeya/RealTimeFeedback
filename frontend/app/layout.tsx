@@ -7,7 +7,7 @@ const geist = Geist({ subsets: ["latin"] })
 const geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "PulseX - Real-time Presentation Feedback",
+  title: "AudiencePulse - Real-time Presentation Feedback",
   description: "Transform presentations with instant audience feedback and real-time analytics",
   icons: {
     icon: [{ url: "/icon.svg", type: "image/svg+xml" }],

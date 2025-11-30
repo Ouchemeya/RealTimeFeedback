@@ -35,13 +35,13 @@ export default function Home() {
 
   const handleAudienceJoin = () => {
     if (inputRoomCode.trim().length === 6) {
-      // Redirection vers la page audience avec le code
+      // Redirect to audience page with code
       window.location.href = `/audience?room=${inputRoomCode.toUpperCase()}`
     }
   }
 
   const handlePresenterContinue = () => {
-    // Redirection vers le dashboard présentateur avec le code
+    // Redirect to presenter dashboard with code
     window.location.href = `/presenter?room=${roomCode}`
   }
 
@@ -51,7 +51,7 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // Page d'accueil principale
+  // Main home page
   if (mode === 'home') {
     return (
       <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950/20 to-slate-950">
@@ -69,7 +69,7 @@ export default function Home() {
             <div
               className={`text-2xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-500 bg-clip-text text-transparent animate-gradient-shift ${mounted ? "animate-float-in-left" : "opacity-0"}`}
             >
-              PulseX
+              AudiencePulse
             </div>
           </div>
         </nav>
@@ -102,8 +102,8 @@ export default function Home() {
               >
                 <Monitor className="w-6 h-6" />
                 <div className="text-left">
-                  <div className="text-lg">Je suis Présentateur</div>
-                  <div className="text-xs text-white/70">Créer une nouvelle room</div>
+                  <div className="text-lg">I'm a Presenter</div>
+                  <div className="text-xs text-white/70">Create a new room</div>
                 </div>
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform ml-auto" />
               </button>
@@ -114,8 +114,8 @@ export default function Home() {
               >
                 <Users className="w-6 h-6" />
                 <div className="text-left">
-                  <div className="text-lg">Je suis Audience</div>
-                  <div className="text-xs text-white/70">Rejoindre une room</div>
+                  <div className="text-lg">I'm Audience</div>
+                  <div className="text-xs text-white/70">Join a room</div>
                 </div>
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform ml-auto" />
               </button>
@@ -126,18 +126,18 @@ export default function Home() {
               {[
                 {
                   icon: Zap,
-                  title: "Réactions en Direct",
-                  desc: "Feedback instantané sur votre présentation",
+                  title: "Live Reactions",
+                  desc: "Instant feedback on your presentation",
                 },
                 {
                   icon: Monitor,
-                  title: "Dashboard Analytics",
-                  desc: "Visualisez l'engagement en temps réel",
+                  title: "Analytics Dashboard",
+                  desc: "Visualize engagement in real-time",
                 },
                 {
                   icon: Users,
-                  title: "Questions & Réponses",
-                  desc: "Interagissez avec votre audience",
+                  title: "Q&A",
+                  desc: "Interact with your audience",
                 },
               ].map((feature, i) => {
                 const Icon = feature.icon
@@ -163,7 +163,7 @@ export default function Home() {
     )
   }
 
-  // Page de création de room pour présentateur
+  // Room creation page for presenter
   if (mode === 'presenter') {
     return (
       <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950/20 to-slate-950">
@@ -175,7 +175,7 @@ export default function Home() {
         <nav className="relative z-20 border-b border-cyan-500/20 bg-gradient-to-b from-slate-950/90 via-slate-950/70 to-transparent backdrop-blur-xl">
           <div className="max-w-6xl mx-auto px-6 py-4">
             <div className="text-2xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-500 bg-clip-text text-transparent">
-              PulseX
+              AudiencePulse
             </div>
           </div>
         </nav>
@@ -184,20 +184,20 @@ export default function Home() {
           <div className={`text-center space-y-8 ${mounted ? "animate-float-in-up" : "opacity-0"}`}>
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-500/10 border border-green-500/30 rounded-full backdrop-blur-sm">
               <Check className="w-4 h-4 text-green-400" />
-              <span className="text-xs font-semibold text-green-300">Room Créée avec Succès</span>
+              <span className="text-xs font-semibold text-green-300">Room Created Successfully</span>
             </div>
 
             <h1 className="text-5xl font-bold text-white">
-              Votre Room est Prête !
+              Your Room is Ready!
             </h1>
 
             <p className="text-white/50">
-              Partagez ce code avec votre audience pour qu'ils puissent rejoindre votre présentation
+              Share this code with your audience so they can join your presentation
             </p>
 
             {/* Room code display */}
             <div className="glass p-8 rounded-2xl border border-cyan-500/30">
-              <div className="text-sm text-white/50 mb-3">Code de la Room</div>
+              <div className="text-sm text-white/50 mb-3">Room Code</div>
               <div className="flex items-center justify-center gap-4">
                 <div className="text-6xl font-bold tracking-widest bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
                   {roomCode}
@@ -205,7 +205,7 @@ export default function Home() {
                 <button
                   onClick={copyToClipboard}
                   className="p-3 bg-white/5 hover:bg-white/10 rounded-lg transition-all duration-300 border border-cyan-500/30 hover:border-cyan-500/50"
-                  title="Copier le code"
+                  title="Copy code"
                 >
                   {copied ? (
                     <Check className="w-6 h-6 text-green-400" />
@@ -216,7 +216,7 @@ export default function Home() {
               </div>
               {copied && (
                 <div className="text-xs text-green-400 mt-2 animate-pulse">
-                  Code copié dans le presse-papier !
+                  Code copied to clipboard!
                 </div>
               )}
             </div>
@@ -225,20 +225,20 @@ export default function Home() {
             <div className="glass p-6 rounded-xl border border-cyan-500/20 text-left space-y-4">
               <h3 className="font-semibold text-white flex items-center gap-2">
                 <Users className="w-5 h-5 text-cyan-400" />
-                Comment inviter votre audience :
+                How to invite your audience:
               </h3>
               <ol className="space-y-2 text-sm text-white/60">
                 <li className="flex gap-3">
                   <span className="text-cyan-400 font-bold">1.</span>
-                  <span>Partagez le code <span className="font-mono text-cyan-400">{roomCode}</span> avec votre audience</span>
+                  <span>Share the code <span className="font-mono text-cyan-400">{roomCode}</span> with your audience</span>
                 </li>
                 <li className="flex gap-3">
                   <span className="text-cyan-400 font-bold">2.</span>
-                  <span>Ils doivent aller sur PulseX et choisir "Je suis Audience"</span>
+                  <span>They should go to AudiencePulse and choose "I'm Audience"</span>
                 </li>
                 <li className="flex gap-3">
                   <span className="text-cyan-400 font-bold">3.</span>
-                  <span>Ils entrent le code pour rejoindre votre room</span>
+                  <span>They enter the code to join your room</span>
                 </li>
               </ol>
             </div>
@@ -247,7 +247,7 @@ export default function Home() {
               onClick={handlePresenterContinue}
               className="w-full group px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold rounded-xl hover:shadow-xl hover:shadow-cyan-500/40 transition-all duration-300 flex items-center justify-center gap-3"
             >
-              Accéder au Dashboard
+              Go to Dashboard
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </button>
 
@@ -255,7 +255,7 @@ export default function Home() {
               onClick={() => setMode('home')}
               className="text-sm text-white/40 hover:text-white/60 transition-colors"
             >
-              ← Retour à l'accueil
+              ← Back to home
             </button>
           </div>
         </main>
@@ -263,7 +263,7 @@ export default function Home() {
     )
   }
 
-  // Page pour audience - saisie du code
+  // Audience page - code entry
   if (mode === 'audience') {
     return (
       <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950/20 to-slate-950">
@@ -275,7 +275,7 @@ export default function Home() {
         <nav className="relative z-20 border-b border-cyan-500/20 bg-gradient-to-b from-slate-950/90 via-slate-950/70 to-transparent backdrop-blur-xl">
           <div className="max-w-6xl mx-auto px-6 py-4">
             <div className="text-2xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-500 bg-clip-text text-transparent">
-              PulseX
+              AudiencePulse
             </div>
           </div>
         </nav>
@@ -284,26 +284,26 @@ export default function Home() {
           <div className={`text-center space-y-8 ${mounted ? "animate-float-in-up" : "opacity-0"}`}>
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-purple-500/10 border border-purple-500/30 rounded-full backdrop-blur-sm">
               <Users className="w-4 h-4 text-purple-400" />
-              <span className="text-xs font-semibold text-purple-300">Mode Audience</span>
+              <span className="text-xs font-semibold text-purple-300">Audience Mode</span>
             </div>
 
             <h1 className="text-5xl font-bold text-white">
-              Rejoindre une Présentation
+              Join a Presentation
             </h1>
 
             <p className="text-white/50">
-              Entrez le code de la room partagé par votre présentateur
+              Enter the room code shared by your presenter
             </p>
 
             {/* Code input */}
             <div className="glass p-8 rounded-2xl border border-cyan-500/30 space-y-6">
               <div>
-                <label className="text-sm text-white/50 mb-3 block">Code de la Room</label>
+                <label className="text-sm text-white/50 mb-3 block">Room Code</label>
                 <input
                   type="text"
                   value={inputRoomCode}
                   onChange={(e) => setInputRoomCode(e.target.value.toUpperCase().slice(0, 6))}
-                  placeholder="Entrez le code (6 caractères)"
+                  placeholder="Enter code (6 characters)"
                   maxLength={6}
                   className="w-full px-6 py-4 bg-white/5 border border-cyan-500/30 rounded-lg text-3xl font-bold tracking-widest text-center text-white placeholder-white/20 focus:outline-none focus:border-cyan-500/60 focus:bg-white/10 transition-all"
                   autoFocus
@@ -315,7 +315,7 @@ export default function Home() {
                 disabled={inputRoomCode.length !== 6}
                 className="w-full group px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-600 text-white font-semibold rounded-xl hover:shadow-xl hover:shadow-purple-500/40 transition-all duration-300 flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none"
               >
-                Rejoindre la Room
+                Join Room
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </button>
             </div>
@@ -324,20 +324,20 @@ export default function Home() {
             <div className="glass p-6 rounded-xl border border-cyan-500/20 text-left">
               <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
                 <Zap className="w-5 h-5 text-cyan-400" />
-                Une fois connecté, vous pourrez :
+                Once connected, you'll be able to:
               </h3>
               <ul className="space-y-2 text-sm text-white/60">
                 <li className="flex gap-3">
                   <span className="text-cyan-400">✓</span>
-                  <span>Envoyer des réactions en temps réel</span>
+                  <span>Send real-time reactions</span>
                 </li>
                 <li className="flex gap-3">
                   <span className="text-cyan-400">✓</span>
-                  <span>Poser des questions au présentateur</span>
+                  <span>Ask questions to the presenter</span>
                 </li>
                 <li className="flex gap-3">
                   <span className="text-cyan-400">✓</span>
-                  <span>Voter pour les meilleures questions</span>
+                  <span>Vote for the best questions</span>
                 </li>
               </ul>
             </div>
@@ -346,7 +346,7 @@ export default function Home() {
               onClick={() => setMode('home')}
               className="text-sm text-white/40 hover:text-white/60 transition-colors"
             >
-              ← Retour à l'accueil
+              ← Back to home
             </button>
           </div>
         </main>

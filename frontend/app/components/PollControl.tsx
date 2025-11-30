@@ -1,14 +1,12 @@
-"use client"
-
-import React from 'react';
+import { BarChart3, X, ThumbsUp, ThumbsDown, Send } from "lucide-react"
 
 interface PollControlProps {
-  activePoll: any;
-  pollText: string;
-  setPollText: (text: string) => void;
-  onCreatePoll: () => void;
-  onEndPoll: () => void;
-  isConnected: boolean;
+  activePoll: any
+  pollText: string
+  setPollText: (text: string) => void
+  onCreatePoll: () => void
+  onEndPoll: () => void
+  isConnected: boolean
 }
 
 export default function PollControl({
@@ -17,121 +15,152 @@ export default function PollControl({
   setPollText,
   onCreatePoll,
   onEndPoll,
-  isConnected
+  isConnected,
 }: PollControlProps) {
+  const totalVotes = (activePoll?.yes_votes || 0) + (activePoll?.no_votes || 0)
+  const yesPercentage = totalVotes > 0 ? ((activePoll?.yes_votes || 0) / totalVotes) * 100 : 0
+  const noPercentage = totalVotes > 0 ? ((activePoll?.no_votes || 0) / totalVotes) * 100 : 0
+
   return (
-    <div className="glass rounded-xl p-6 border border-cyan-500/20 hover:border-cyan-500/40 transition-all duration-300 flex flex-col glow-pulse mb-6">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="p-2 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-lg">
-          <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-          </svg>
+    <div className="relative backdrop-blur-xl bg-gradient-to-br from-white/5 via-white/5 to-white/5 rounded-xl p-4 border border-white/10 hover:border-white/20 transition-all duration-300">
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-3">
+        <div className="p-2 bg-gradient-to-br from-poll-cyan/20 to-poll-purple/20 rounded-lg border border-white/20">
+          <BarChart3 className="w-4 h-4 text-white" strokeWidth={2} />
         </div>
-        <h2 className="text-xl font-bold text-white">Live Poll</h2>
+        <div className="flex-1">
+          <h3 className="text-sm font-bold text-white">Quick Poll</h3>
+        </div>
+        {isConnected && (
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-poll-success/20 rounded-full border border-poll-success/30">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-poll-success opacity-75" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-poll-success" />
+            </span>
+            <span className="text-xs font-bold text-poll-success-light">Live</span>
+          </div>
+        )}
       </div>
 
       {!activePoll || !activePoll.active ? (
-        <div>
-          <input
-            type="text"
-            value={pollText}
-            onChange={(e) => setPollText(e.target.value)}
-            placeholder="Enter your poll question..."
-            className="w-full bg-white/5 border border-cyan-500/20 text-white placeholder-white/30 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300 backdrop-blur-sm mb-4"
-          />
+        <div className="space-y-3">
+          {/* Input field */}
+          <div className="relative">
+            <input
+              type="text"
+              value={pollText}
+              onChange={(e) => setPollText(e.target.value)}
+              placeholder="Ask your audience..."
+              maxLength={150}
+              className="w-full bg-white/5 border border-white/20 text-white placeholder-white/30 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-poll-cyan/50 focus:ring-1 focus:ring-poll-cyan/20 transition-all duration-300"
+            />
+            <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-medium ${pollText.length > 130 ? 'text-poll-error' : 'text-white/30'}`}>
+              {pollText.length}/150
+            </span>
+          </div>
+
+          {/* Launch button */}
           <button
             onClick={onCreatePoll}
             disabled={!pollText.trim() || !isConnected}
-            className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg hover:shadow-purple-500/30 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg font-bold text-xs text-white transition-all duration-300 ${
+              !pollText.trim() || !isConnected
+                ? 'bg-white/10 cursor-not-allowed opacity-50'
+                : 'bg-gradient-to-r from-poll-purple to-poll-pink hover:shadow-lg hover:shadow-poll-pink/20 active:scale-95'
+            }`}
           >
-            <span>📊</span>
-            <span>Launch Poll (30s)</span>
+            {!pollText.trim() || !isConnected ? (
+              <>
+                <X className="w-3.5 h-3.5" />
+                <span>{!isConnected ? 'Not Connected' : 'Enter Question'}</span>
+              </>
+            ) : (
+              <>
+                <Send className="w-3.5 h-3.5" />
+                <span>Launch • 30s</span>
+              </>
+            )}
           </button>
         </div>
       ) : (
-        <div className="space-y-4">
-          <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-bold text-purple-400 uppercase flex items-center gap-1">
-                <span className="animate-pulse">📊</span> Active Poll
-              </span>
+        <div className="space-y-3">
+          {/* Active poll badge */}
+          <div className="relative bg-gradient-to-r from-poll-purple/20 to-poll-pink/20 border border-poll-purple/40 rounded-lg p-3">
+            <div className="flex items-start justify-between mb-2">
+              <span className="text-[10px] font-bold text-poll-purple tracking-wider">ACTIVE</span>
               <button
                 onClick={onEndPoll}
-                className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                className="p-1 hover:bg-poll-error/20 rounded transition-all duration-300"
+                title="End poll"
               >
-                End Poll
+                <X className="w-3 h-3 text-white/60 hover:text-poll-error" />
               </button>
             </div>
-            <p className="text-white text-sm font-medium">{activePoll.text}</p>
+            <p className="text-white text-xs font-semibold leading-relaxed">{activePoll.text}</p>
           </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <span className="text-3xl">👍</span>
-              <div className="flex-1">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-white/60">Yes</span>
-                  <span className="text-sm font-bold text-green-400">
-                    {activePoll.yes_votes || 0}
-                  </span>
-                </div>
-                <div className="h-8 bg-white/5 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-gradient-to-r from-green-500 to-emerald-500 transition-all duration-500 flex items-center justify-end px-3"
-                    style={{ 
-                      width: `${(activePoll.yes_votes || 0) + (activePoll.no_votes || 0) > 0 
-                        ? ((activePoll.yes_votes || 0) / ((activePoll.yes_votes || 0) + (activePoll.no_votes || 0))) * 100 
-                        : 0}%` 
-                    }}
-                  >
-                    <span className="text-white text-xs font-bold">
-                      {(activePoll.yes_votes || 0) + (activePoll.no_votes || 0) > 0 
-                        ? Math.round(((activePoll.yes_votes || 0) / ((activePoll.yes_votes || 0) + (activePoll.no_votes || 0))) * 100)
-                        : 0}%
-                    </span>
-                  </div>
-                </div>
+          {/* Results visualization */}
+          <div className="space-y-2.5 bg-white/5 rounded-lg p-3 border border-white/10">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-bold text-white/50 tracking-wider">RESULTS</span>
+              <div className="flex items-center gap-1.5 bg-white/10 px-2 py-0.5 rounded-full">
+                <BarChart3 className="w-3 h-3 text-poll-cyan" />
+                <span className="text-xs font-bold text-white">{totalVotes}</span>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <span className="text-3xl">👎</span>
-              <div className="flex-1">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-white/60">No</span>
-                  <span className="text-sm font-bold text-red-400">
-                    {activePoll.no_votes || 0}
-                  </span>
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-poll-success/20 border border-poll-success/40 flex items-center justify-center flex-shrink-0">
+                  <ThumbsUp className="w-3.5 h-3.5 text-poll-success-light" strokeWidth={2} />
                 </div>
-                <div className="h-8 bg-white/5 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-gradient-to-r from-red-500 to-rose-500 transition-all duration-500 flex items-center justify-end px-3"
-                    style={{ 
-                      width: `${(activePoll.yes_votes || 0) + (activePoll.no_votes || 0) > 0 
-                        ? ((activePoll.no_votes || 0) / ((activePoll.yes_votes || 0) + (activePoll.no_votes || 0))) * 100 
-                        : 0}%` 
-                    }}
-                  >
-                    <span className="text-white text-xs font-bold">
-                      {(activePoll.yes_votes || 0) + (activePoll.no_votes || 0) > 0 
-                        ? Math.round(((activePoll.no_votes || 0) / ((activePoll.yes_votes || 0) + (activePoll.no_votes || 0))) * 100)
-                        : 0}%
-                    </span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] text-white/60 font-bold">YES</span>
+                    <span className="text-xs font-bold text-poll-success-light">{activePoll.yes_votes || 0}</span>
+                  </div>
+                  <div className="h-4 bg-white/5 rounded-lg overflow-hidden border border-poll-success/20">
+                    <div
+                      className="h-full bg-gradient-to-r from-poll-success to-poll-success-light transition-all duration-700 flex items-center justify-end px-2"
+                      style={{ width: `${yesPercentage}%` }}
+                    >
+                      {yesPercentage > 25 && (
+                        <span className="text-white text-[10px] font-bold">
+                          {Math.round(yesPercentage)}%
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="text-center pt-3 border-t border-purple-500/20">
-              <span className="text-xs text-white/40">
-                Total votes: <span className="font-bold text-purple-400">
-                  {(activePoll.yes_votes || 0) + (activePoll.no_votes || 0)}
-                </span>
-              </span>
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-poll-error/20 border border-poll-error/40 flex items-center justify-center flex-shrink-0">
+                  <ThumbsDown className="w-3.5 h-3.5 text-poll-error-light" strokeWidth={2} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] text-white/60 font-bold">NO</span>
+                    <span className="text-xs font-bold text-poll-error-light">{activePoll.no_votes || 0}</span>
+                  </div>
+                  <div className="h-4 bg-white/5 rounded-lg overflow-hidden border border-poll-error/20">
+                    <div
+                      className="h-full bg-gradient-to-r from-poll-error to-poll-error-light transition-all duration-700 flex items-center justify-end px-2"
+                      style={{ width: `${noPercentage}%` }}
+                    >
+                      {noPercentage > 25 && (
+                        <span className="text-white text-[10px] font-bold">
+                          {Math.round(noPercentage)}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       )}
     </div>
-  );
+  )
 }
